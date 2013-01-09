@@ -4,9 +4,9 @@ void setup() {
 }
 void loop() {
   int QRE_Value = analogRead(QRE1113_Pin);
-  if(QRE_Value < 100) {
+
     Serial.println(QRE_Value);
-  }
+  
 }
 
 
