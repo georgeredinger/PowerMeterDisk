@@ -7,12 +7,16 @@
 int main(int argc, char *argv[]){
 std::ifstream infile("samples.dat");
 int sample;
+int max;
+int samp;
  printf("detector testing\n");	
  while (infile >> sample) {
-	 std::cout << sample << std::endl;
-		 }
-
-
+	 samp = detect(sample); 
+	 if(samp != max){
+	   std::cout << samp << std::endl;
+	 }
+	 max = samp;
+}
 }
 
 

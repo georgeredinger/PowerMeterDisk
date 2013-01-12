@@ -14,7 +14,8 @@ $(MYPROGRAM): $(SOURCE)
 clean:
 	rm -fltk $(MYPROGRAM)
 
-
+test: detector_test
+	./detector_test
 
 
 
