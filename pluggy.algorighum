@@ -1,0 +1,464 @@
+/*
+Runs Home Automation & Monitoring.  15th Aug 2009
+
+Reprogram with new LCD Library
+
+Take one of combined current transformer + meter sensor.
+This one runs CH from Ditital Thermometers
+Modified Electric Bits
+
+ */
+#include <OneWire.h>
+#include <LiquidCrystal.h>
+
+
+int val = 0;
+byte outval = 0;
+int volt = 0;
+int voltm = 0;
+int voltg = 0;
+int volt3 = 0;
+int volt4 = 0;
+int volt5 = 0;
+int temphigh = 288;
+int templow = 288;
+int voltglast = 1020;
+int voltglast1 = 0;
+int voltmlast = 1020;
+int voltmlast1 = 0;
+int voltmlast2 = 0;
+long leccy = 0;
+long leccy2 = 0;
+long wattage =0;
+
+long lastwattage =0;
+float watts =0;
+float drtemp =0;
+float lrtemp =0;
+float ostemp =0;
+float ch1temp =0;
+
+int vmax = 0;
+float avwattage = 100;
+float lastavwattage =0;
+float voltmrollaverage = 0;
+float voltmramax = 0;
+float voltmramin = 2000;
+
+unsigned int rev1 = 0;
+unsigned int rev2 = 0;
+unsigned int tempcount1 = 0;
+unsigned int tempin = 400;  // stops C/H firing up at start
+unsigned int tempcount2 = 0;
+unsigned int tempch = 288;
+unsigned int lasttempch = 0;
+unsigned int tempout = 0;
+unsigned int light = 0;
+unsigned int light2 = 0;
+int vmin = 20000;
+int vdiff = 0;
+unsigned long vtot = 0;
+unsigned long lastmin = 60000;
+unsigned long time = 0;
+unsigned long timeon = 0;
+unsigned long ttime = 0;
+unsigned long lb = 0;
+unsigned long expected = 2800;
+unsigned long temptot1 = 0;
+unsigned long temptot2 = 0;
+unsigned long lastblack = 0;
+unsigned long total = 0;
+unsigned long secs = 0;
+unsigned long min5 = 200000;
+unsigned long templight = 0;
+unsigned long templight2 = 0;
+
+byte countmin = 0;
+byte serinput = 0;
+byte bstripe = 0;
+unsigned int count = 0;
+int trigger = 900;   // 
+int gtrigger = 100;
+int volts1[255];
+int volts[200];
+unsigned long bltimes[25];
+unsigned long gastimes[10];
+boolean lighton = false;
+boolean alert = false;
+boolean beep = false;
+boolean beepon = false;
+LiquidCrystal lcd(12, 2, 7, 8, 9, 10);
+char buff[15];
+// Pin definintions here
+int ledPin = 13;
+int beepPin = 11;
+int chrelayPin = 3;
+int dallasPin = 6;
+int wattmeterPin = 5;
+
+
+// dallas 1wire stuff
+OneWire  ds(dallasPin); 
+byte i;
+  byte dallasadd1[8];
+  byte dallasadd2[8];
+  byte dallasadd3[8];
+  byte dallasadd4[8];
+  byte dallasadd5[8];
+  byte data[8];
+  
+  int dallas1;
+  int dallas2;
+  int dallas3;
+  int dallas4;
+  int dallas5;
+  int dallas1l =0;
+  int dallas2l =0;
+  int dallas3l =0;
+  int dallas4l =0;
+  int dallas5l =0;
+
+void setup()
+{ 
+  pinMode(ledPin, OUTPUT);
+  pinMode(chrelayPin, OUTPUT);
+  pinMode(wattmeterPin, OUTPUT);
+  pinMode(beepPin, OUTPUT); //Beeper
+  digitalWrite(chrelayPin, LOW);
+  analogReference(EXTERNAL);
+  lcd.begin(16,2);
+  Serial.begin(115200);
+  lcd.clear(); 
+  lcd.noBlink();
+  for (int count=0; count <= 10; count++){   
+      gastimes[count] = 0; }
+  //dallas stuff    
+  ds.reset();
+  ds.reset_search();
+  ds.search(dallasadd1);
+  ds.search(dallasadd2);
+  ds.search(dallasadd3);
+  ds.search(dallasadd4);
+  ds.search(dallasadd5);
+}
+
+void loop()
+{ 
+  analogReference(EXTERNAL); // Low voltage for current transformer
+  vtot = 0;
+    for (int count=1; count <= 100; count++){   // reads 100 values for waveform
+       volt = analogRead(0);    // Pin 0 Current transformer
+       if (volt >= 546){
+          vdiff = volt - 546; }
+       else {
+          vdiff = 546 - volt; }
+       vtot = vtot + vdiff;  
+       volts[count] = volt;    
+       delayMicroseconds(80);
+    } // end of count loop
+  vdiff = vtot / 33;
+  analogReference(DEFAULT);  // 5v for Elec meter sensor
+  delay(10);
+  voltm = analogRead(1);    // Pin 1 Elec Meter sensor
+  voltg = analogRead(2);    // Pin 2 Gas Meter sensor
+  volt3 = analogRead(3);    // Pin 3 thermistor
+  volt4 = analogRead(4);    // Pin 4 outside thermistor 
+  volt5 = analogRead(5);    // Pin 5 light sensor
+  vmin = min(vmin,voltm);
+  vmax = max(vmax,voltm);
+  voltmrollaverage = voltmrollaverage * 0.97 + voltm * 0.03;
+  temptot1 = temptot1 + volt3;
+  tempcount1 = tempcount1 + 1;
+  temptot2 = temptot2 + volt4;
+  tempcount2 = tempcount2 + 1;
+  templight = templight + volt3;
+  time = millis();
+  if (time >= lastmin){  // minute loop
+     lrtemp = float(dallas2) / 16;
+     drtemp = float(dallas4) / 16;
+     ostemp = float(dallas1) / 16;
+     ch1temp = float(tempch) / 16;
+     if (dallas2 != dallas2l){
+     floatToString(lrtemp,buff);
+     lcd.setCursor(0,1);
+     lcd.print("      ");
+     lcd.setCursor(0,1); 
+     lcd.print(buff);
+     lcd.print((char)223);  // degree symbol
+     dallas2l = dallas2;
+     }
+      if (dallas4 != dallas4l){
+     floatToString(drtemp,buff);
+     lcd.setCursor(6,1);
+     lcd.print("      ");
+     lcd.setCursor(6,1);
+     lcd.print(buff);
+     lcd.print((char)223);  // degree symbol
+     dallas4l = dallas4;
+     }
+     if (dallas1 != dallas1l){
+     floatToString(ostemp,buff);
+     lcd.setCursor(12,1);
+     lcd.print("      ");
+     lcd.setCursor(12,1);
+     lcd.print(buff);
+     lcd.print((char)223);  // degree symbol
+     dallas1l = dallas1;
+     }
+     if (tempch != lasttempch){
+     floatToString(ch1temp,buff);
+     lcd.setCursor(12,0); 
+     lcd.print("      ");
+     lcd.setCursor(12,0);  
+     lcd.print(buff);
+     //lcd.print((char)223);  // degree symbol
+     lasttempch = tempch;
+     }
+     avwattage = avwattage * 0.98 + wattage * 0.02;
+     vmin = 2000;
+     vmax = 0;
+     lastmin = time + 60000;
+     tempin = (dallas2 + dallas4) / 2;   // adjust to suit
+     tempout = dallas1;  // adjust to suit
+     temptot1 = 0;
+     if (alert){ beep = true; alert =false; } else { beep =false; };
+     light = templight / tempcount2;
+     light2 = temptot2 / tempcount2;
+     temptot2 = 0;
+     tempcount2 = 0;
+     templight = 0;
+     
+     }
+    if (time >= min5){   // central heating loop stops it cycling
+     temphigh = tempch ;
+     templow = tempch -1;
+     min5 = time + 120000;  
+     if (tempin - tempout >= 100){ min5 = time + 300000; temphigh = tempch +1; }
+     if (tempin >= temphigh){ digitalWrite(chrelayPin, LOW); timeon = 0 ; min5 = time + 300000;  }
+     if (tempin <= templow ){ digitalWrite(chrelayPin, HIGH); if (timeon=0 ){ timeon = time ;} }
+    } 
+  if (rev1 > 65000){ rev1 = 0 ; rev2 = 0; } // cleanly resets rev counters approachin limit of variables
+  if (voltm < trigger && voltmlast < trigger && voltmlast1 >= trigger && voltmlast2 >= trigger){
+     rev1 = rev1++ ;
+     if (time - lb > expected){   
+         for (int c2 =0; c2 <= 21; c2++){ 
+            bltimes[c2] = bltimes[c2 + 1];}
+            bltimes[22] = time;
+            lastblack = time;
+            bstripe = bstripe++ ;
+            rev2 = rev2++ ;
+            expected = 2800; //  reasonable wait until next meter rev. ( about 1/5 of a rev)
+            if (voltmrollaverage >= trigger){ expected = 10000; }; 
+         }
+    lb = time; 
+  }    
+   if (voltg > gtrigger && voltglast > gtrigger && voltglast1 <= gtrigger){
+      for (int c2 =0; c2 <= 9; c2++){ 
+        gastimes[c2] = gastimes[c2 + 1];}
+        gastimes[9] = time;     
+   }    
+  voltglast1 = voltglast;
+  voltglast = voltg; 
+  voltmlast2 = voltmlast1;
+  voltmlast1 = voltmlast;
+  voltmlast = voltm; 
+  //digitalWrite(ledPin, LOW);   // turn the ledPin off
+  if (time/1000 > secs){   
+     volts1[countmin] = vdiff;
+     voltmramin = min(voltmramin,voltmrollaverage);
+     voltmramax = max(voltmramax,voltmrollaverage);
+     secs = time/1000;
+     countmin = countmin++;
+     outval = countmin + 195; 
+       leccy = bltimes[22] - bltimes[21] ;
+       leccy2 = time - bltimes[22];
+       leccy = max(leccy,leccy2);
+     if (leccy > 0){wattage = 24000000 / leccy ;} else {wattage = 0;};
+     vdiff = wattage / 8;  
+     watts = wattage;
+     if (wattage != lastwattage){
+     floatToString2(watts,buff);
+     lcd.setCursor(0,0); 
+     lcd.print("      ");
+     lcd.setCursor(0,0);  
+     lcd.print(buff);
+     lastwattage = wattage;}
+     if (int(avwattage) != int(lastavwattage)){
+     floatToString2(avwattage,buff);
+     lcd.setCursor(6,0); 
+     lcd.print("      ");
+     lcd.setCursor(6,0);  
+     lcd.print(buff);
+     lastavwattage = avwattage;}
+     if (vdiff > 255){vdiff = 255;}; // max reading approx 2 kW
+     analogWrite(wattmeterPin, vdiff); // analogue meter
+     if (Serial.available() ) {
+     serinput = Serial.read();
+     if ((char)serinput == 'A' ){ tempch = 352 ;}  //  22
+     if ((char)serinput == 'B' ){ tempch = 344 ;}  //  21.5
+     if ((char)serinput == 'C' ){ tempch = 336 ;}  //  21
+     if ((char)serinput == 'D' ){ tempch = 328 ;}  //  20.5
+     if ((char)serinput == 'E' ){ tempch = 320 ;}  //  20
+     if ((char)serinput == 'F' ){ tempch = 288 ;}  //  18 
+     if ((char)serinput == 'G' ){ tempch = 264 ;}  //  16.5 
+     if ((char)serinput == 'H' ){ tempch = 240 ;}  //  15
+     if ((char)serinput == 'I' ){ tempch = 208 ;}  //  13 
+     if ((char)serinput == '!' ){ alert = true ; lcd.blink(); } //  Sets to beep for 1 minute at next 'Minute' 
+     if ((char)serinput == '1' ){ lcd.blink(); }  // turns blink on without audible alarm 
+     if ((char)serinput == '0' ){ lcd.noBlink() ;} // turns blinking off after alert turns it on
+     temphigh = tempch;
+     templow = tempch - 1;
+     Serial.flush();
+       }
+    // dallas stuff   
+    ds.reset();
+    ds.select(dallasadd5);    
+    ds.write(0xBE);         // Read Scratchpad
+    for ( i = 0; i < 9; i++) { data[i] = ds.read(); }; 
+    dallas5 = (data[1] << 8) + data[0];
+    ds.reset();
+    ds.select(dallasadd4);    
+    ds.write(0xBE);         // Read Scratchpad
+    for ( i = 0; i < 9; i++) { data[i] = ds.read(); }; 
+    dallas4 = (data[1] << 8) + data[0];
+    ds.reset();
+    ds.select(dallasadd3);    
+    ds.write(0xBE);         // Read Scratchpad
+    for ( i = 0; i < 9; i++) { data[i] = ds.read(); }; 
+    dallas3 = (data[1] << 8) + data[0];
+    ds.reset();
+    ds.select(dallasadd2);    
+    ds.write(0xBE);         // Read Scratchpad
+    for ( i = 0; i < 9; i++) { data[i] = ds.read(); }; 
+    dallas2 = (data[1] << 8) + data[0];
+    ds.reset();
+    ds.select(dallasadd1);    
+    ds.write(0xBE);         // Read Scratchpad
+    for ( i = 0; i < 9; i++) { data[i] = ds.read(); }; 
+    dallas1 = (data[1] << 8) + data[0];
+    ds.reset();
+    ds.select(dallasadd1);
+    ds.write(0x44,1);    
+    ds.reset();
+    ds.select(dallasadd2);
+    ds.write(0x44,1);
+    ds.reset();  
+    ds.select(dallasadd3);
+    ds.write(0x44,1);
+    ds.reset();  
+    ds.select(dallasadd4);
+    ds.write(0x44,1);
+    ds.reset();  
+    ds.select(dallasadd5);
+    ds.write(0x44,1);    
+     for (int c2 =1; c2 <= 60; c2++){
+        Serial.print(volts1[outval]);
+        Serial.print(" ");
+        outval = outval++ ;
+      }  // end c2 loop   
+     Serial.println("CT");
+     Serial.print(voltm);
+     Serial.print(" ");
+     Serial.print(voltg);
+     Serial.print(" ");
+     Serial.print(tempin);
+     Serial.print(" ");
+     Serial.print(tempout);
+     Serial.print(" ");
+     Serial.print(light);
+     Serial.print(" ");
+     Serial.print(vmin);
+     Serial.print(" ");
+     Serial.print(vmax);
+     Serial.print(" ");
+     Serial.print(rev1);
+     Serial.print(" ");
+     Serial.print(rev2);
+     Serial.print(" ");
+     Serial.print(time);
+     Serial.print(" ");
+     Serial.print(timeon);
+     Serial.print(" ");
+     Serial.print(tempch);
+     Serial.print(" ");
+     Serial.print(min5);
+     Serial.print(" ");
+     Serial.print(light2);
+     Serial.print(" ");
+     Serial.print(dallas1);
+     Serial.print(" ");
+     Serial.print(dallas2);
+     Serial.print(" ");
+     Serial.print(dallas3);
+     Serial.print(" ");
+     Serial.print(dallas4);
+     Serial.print(" ");
+     Serial.print(dallas5);
+     Serial.print(" "); 
+     Serial.print(tempcount1);
+     Serial.print(" "); 
+     Serial.print(voltmramin);
+     Serial.print(" "); 
+     Serial.print(voltmramax);
+     Serial.print(" ");
+     Serial.print(wattage);
+     Serial.print(" ");
+     Serial.print(avwattage);
+     Serial.print(" ");
+     Serial.println("BITS");
+     ttime = time - 60000;
+     tempcount1 = 0;
+     for (int c2 =1; c2 <= 22; c2++){
+           Serial.print(bltimes[c2]/100);
+           Serial.print(" ");
+           outval = outval++ ;
+          }  // end c2 loop
+     Serial.print(time/100);
+     Serial.print(" ");
+     Serial.println("LEC");
+     for (int c2 =0; c2 <= 9; c2++){
+           Serial.print(gastimes[c2]/100);
+           Serial.print(" ");
+          }  // end c2 loop
+     Serial.print(" ");
+     Serial.println("GAS");
+     for (int c2 =1; c2 <= 100; c2++){
+      Serial.print(volts[c2]);
+      Serial.print(" ");
+   }
+   Serial.println("WF");
+   for( i = 0; i < 8; i++) {
+    Serial.print(dallasadd1[i], HEX); Serial.print(" "); }
+    Serial.print("***");
+   for( i = 0; i < 8; i++) {
+    Serial.print(dallasadd2[i], HEX); Serial.print(" "); }
+    Serial.println("DEBUG"); 
+    if (beep){
+    if (beepon){analogWrite(beepPin,128); beepon = false;}
+       else {digitalWrite(beepPin,LOW); beepon = true;}}
+    else { digitalWrite(beepPin,LOW);  } 
+     if (lighton){ digitalWrite(ledPin, HIGH); lighton = false; }
+       else { digitalWrite(ledPin, LOW); lighton = true; };
+  } // end if
+      
+} // end void loop
+
+
+void floatToString(float froggy, char *buff)
+
+{
+  int froggy2;
+
+  froggy2 = (froggy - (int)froggy) * 10;
+  sprintf(buff,"%0d.%d", (int)froggy,froggy2 ); 
+
+}
+
+void floatToString2(float froggy, char *buff)
+
+{
+  
+  sprintf(buff,"%0dW", (int)froggy ); 
+
+}
+
